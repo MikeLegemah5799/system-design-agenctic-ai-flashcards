@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Amazon L5 System Design — Flash Cards</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#f4f0e7; --paper-2:#efe9dc;
+    --ink:#161514; --rule:#111;
+    --teal:#1f97ae; --teal-soft:#5bc0d0;
+    --coral:#e0514c; --amber:#c98a2b; --muted:#726c60; --line:#d8d0be;
+    --code-bg:#191f26; --code-fg:#e7e3d8; --code-com:#8aa889;
+    --disp:"Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+    --mono:"JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{background:var(--paper);background-image:linear-gradient(var(--line) 1px, transparent 1px);background-size:100% 34px;color:var(--ink);font-family:var(--mono);min-height:100vh;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:860px;margin:0 auto;padding:26px 18px 60px;}
+
+  .kicker{font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--teal);font-weight:700;}
+  h1{font-family:var(--disp);font-weight:700;font-size:clamp(25px,5.8vw,42px);line-height:.98;letter-spacing:-.01em;margin:4px 0 8px;}
+  .sub{font-size:13px;color:var(--muted);line-height:1.55;max-width:68ch;}
+  .rule{height:6px;background:var(--rule);border-radius:2px;margin:12px 0 14px;}
+
+  .legend{display:flex;flex-wrap:wrap;gap:8px 16px;font-size:11.5px;color:var(--muted);margin:0 0 16px;align-items:center;}
+  .legend b{color:var(--ink);}
+  .dot{display:inline-flex;align-items:center;gap:6px;}
+  .pip{width:11px;height:11px;border-radius:50%;display:inline-block;border:2px solid;}
+  .pip.core{background:var(--coral);border-color:var(--coral);}
+  .pip.common{background:transparent;border-color:var(--teal);}
+  .pip.sit{background:transparent;border-color:var(--muted);}
+
+  .filters{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:14px;}
+  .chip{font-size:11.5px;font-weight:600;letter-spacing:.02em;padding:6px 11px;border:1.5px solid var(--ink);background:transparent;color:var(--ink);border-radius:20px;cursor:pointer;transition:.12s;}
+  .chip:hover{background:var(--paper-2);}
+  .chip.active{background:var(--ink);color:var(--paper);}
+
+  .stage{perspective:1600px;margin-bottom:16px;}
+  .card{position:relative;width:100%;min-height:580px;transform-style:preserve-3d;transition:transform .5s cubic-bezier(.2,.7,.2,1);cursor:pointer;}
+  .card.flipped{transform:rotateY(180deg);}
+  .face{position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden;background:#fbf8f1;border:2.5px solid var(--ink);border-radius:14px;box-shadow:7px 8px 0 rgba(17,17,17,.9);padding:24px 24px 20px;display:flex;flex-direction:column;overflow:hidden;}
+  .toprow{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;}
+  .eyebrow{font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;font-weight:700;color:var(--teal);}
+  .tier{font-family:var(--disp);font-weight:700;font-size:10px;letter-spacing:.1em;text-transform:uppercase;padding:3px 8px;border-radius:20px;white-space:nowrap;}
+  .tier.core{background:var(--coral);color:#fff;}
+  .tier.common{background:transparent;color:var(--teal);border:1.5px solid var(--teal);}
+  .tier.sit{background:transparent;color:var(--muted);border:1.5px solid var(--muted);}
+
+  .front{align-items:stretch;text-align:center;}
+  .front .center{flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center;}
+  .typetag{font-family:var(--disp);font-weight:700;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--amber);}
+  .term{font-family:var(--disp);font-weight:700;letter-spacing:-.01em;line-height:1.05;font-size:clamp(22px,5vw,36px);margin-top:8px;}
+  .prompt{font-size:12.5px;color:var(--muted);margin-top:10px;line-height:1.45;max-width:40ch;font-style:italic;}
+  .underbar{height:5px;width:min(360px,72%);background:var(--rule);border-radius:2px;margin:18px auto 0;}
+  .flip-hint{margin-top:16px;font-size:12px;color:var(--muted);display:flex;align-items:center;justify-content:center;gap:8px;}
+  .flip-hint b{color:var(--coral);font-weight:700;}
+  .arrow{color:var(--coral);font-family:var(--disp);font-weight:700;}
+
+  .back{transform:rotateY(180deg);}
+  .backscroll{overflow-y:auto;flex:1;display:flex;flex-direction:column;padding-right:3px;}
+  .backscroll::-webkit-scrollbar{width:7px;}
+  .backscroll::-webkit-scrollbar-thumb{background:#cfc7b4;border-radius:4px;}
+  .bterm{font-family:var(--disp);font-weight:700;font-size:clamp(16px,3.4vw,21px);margin:3px 0 2px;line-height:1.08;}
+  .bmeta{font-size:10.5px;color:var(--muted);margin-bottom:8px;}
+  .thinrule{height:3px;background:var(--rule);border-radius:2px;margin:0 0 10px;}
+
+  .sectionlabel{font-size:9.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--coral);font-weight:700;margin:0 0 5px;}
+  .clarifylist{margin:0 0 11px;display:flex;flex-direction:column;gap:4px;}
+  .clarifyitem{font-size:11.5px;line-height:1.4;color:#242019;padding-left:13px;position:relative;}
+  .clarifyitem:before{content:"?";position:absolute;left:0;color:var(--coral);font-weight:700;}
+  .approach{font-size:12px;line-height:1.5;color:#242019;margin:0 0 10px;}
+  .approach strong{color:var(--teal);font-weight:700;}
+  .approach code{background:var(--paper-2);border-radius:4px;padding:0 4px;font-size:11px;}
+
+  pre{margin:0 0 11px;background:var(--code-bg);color:var(--code-fg);border-radius:9px;padding:11px 12px;font-family:var(--mono);font-size:10.8px;line-height:1.55;overflow-x:auto;white-space:pre;border:1px solid #2b333d;}
+  pre::-webkit-scrollbar{height:8px;}
+  pre::-webkit-scrollbar-thumb{background:#39424d;border-radius:4px;}
+  .arrow-tag{color:var(--teal-soft);}
+  .comment-tag{color:var(--code-com);font-style:italic;}
+
+  .tradebox{border-left:4px solid var(--teal);background:#eef8fa;border-radius:0 8px 8px 0;padding:9px 12px;margin:0 0 11px;}
+  .traderow{font-size:11.5px;line-height:1.48;color:#123a41;margin:3px 0;}
+  .traderow b{color:var(--teal);}
+
+  .probebox{margin:0 0 4px;}
+  .probelabel{font-size:9.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--amber);font-weight:700;margin-bottom:6px;}
+  .probelist{display:flex;flex-direction:column;gap:5px;}
+  .probeitem{font-size:11px;line-height:1.42;color:#4a3714;background:#fbf3e6;border-left:3px solid var(--amber);border-radius:0 6px 6px 0;padding:6px 9px;}
+
+  .cx{margin-top:auto;padding-top:9px;font-size:10.5px;color:var(--muted);display:flex;flex-wrap:wrap;gap:6px 14px;letter-spacing:.02em;border-top:1px dashed var(--line);}
+
+  .controls{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:4px;}
+  .navbtn{font-family:var(--disp);font-weight:700;font-size:14px;padding:11px 16px;border:2.5px solid var(--ink);background:#fbf8f1;color:var(--ink);border-radius:11px;cursor:pointer;transition:.1s;box-shadow:3px 4px 0 rgba(17,17,17,.85);}
+  .navbtn:hover{transform:translate(-1px,-1px);box-shadow:4px 5px 0 rgba(17,17,17,.85);}
+  .navbtn:active{transform:translate(2px,3px);box-shadow:1px 1px 0 rgba(17,17,17,.85);}
+  .flipbtn{background:var(--coral);color:#fff;}
+  .counter{font-family:var(--disp);font-weight:700;font-size:15px;text-align:center;min-width:70px;}
+  .counter small{display:block;font-family:var(--mono);font-weight:500;font-size:9.5px;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin-top:2px;line-height:1.3;}
+  .util{display:flex;gap:8px;justify-content:center;margin-top:14px;flex-wrap:wrap;}
+  .util .navbtn{font-size:12px;padding:8px 13px;box-shadow:2px 3px 0 rgba(17,17,17,.85);}
+  .foot{margin-top:26px;font-size:11px;color:var(--muted);text-align:center;line-height:1.7;}
+  .kbd{font-family:var(--mono);border:1px solid var(--muted);border-radius:5px;padding:1px 6px;font-size:10.5px;}
+  @media (max-width:520px){.face{padding:18px 16px;}.navbtn{padding:10px 12px;}body{background-size:100% 30px;}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="kicker">Amazon L5 loop &#x0B7; high-level design &#x0B7; tradeoffs over trivia</div>
+    <h1>System Design Deck</h1>
+    <p class="sub">Building-block vocabulary, classic "design X" prompts, and the AI/agentic-system prompts most relevant to your actual work. Each card: scoping questions to ask first, an architecture sketch, the trade-off decisions that matter, and the follow-up probes an interviewer digs into once you've drawn the boxes.</p>
+    <div class="rule"></div>
+    <div class="legend">
+      <span class="dot"><span class="pip core"></span><b>Core</b> — near-certain to come up</span>
+      <span class="dot"><span class="pip common"></span><b>Common</b> — solid odds</span>
+      <span class="dot"><span class="pip sit"></span><b>Situational</b> — role-specific / less likely</span>
+    </div>
+  </header>
+
+  <div class="filters" id="filters"></div>
+
+  <div class="stage">
+    <div class="card" id="card" onclick="flip()">
+      <div class="face front">
+        <div class="toprow"><span class="eyebrow" id="f-track"></span><span class="tier" id="f-tier"></span></div>
+        <div class="center">
+          <div class="typetag" id="f-type"></div>
+          <div class="term" id="f-name"></div>
+          <div class="prompt" id="f-prompt"></div>
+          <div class="underbar"></div>
+          <div class="flip-hint"><span class="arrow">&#x21BB;</span> flip for sketch, trade-offs &amp; probes</div>
+        </div>
+      </div>
+      <div class="face back">
+        <div class="backscroll">
+          <div class="toprow"><span class="eyebrow" id="b-track"></span><span class="tier" id="b-tier"></span></div>
+          <div class="bterm" id="b-name"></div>
+          <div class="bmeta" id="b-meta"></div>
+          <div class="thinrule"></div>
+          <div class="sectionlabel" id="b-clarifylabel">&#x25B8; Clarify First</div>
+          <div class="clarifylist" id="b-clarify"></div>
+          <div class="sectionlabel">&#x25B8; Approach</div>
+          <div class="approach" id="b-approach"></div>
+          <pre id="b-sketch"></pre>
+          <div class="tradebox" id="b-tradebox"></div>
+          <div class="probebox"><div class="probelabel">&#x25B8; Follow-up Probes</div><div class="probelist" id="b-probes"></div></div>
+          <div class="cx" id="b-cx"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button class="navbtn" onclick="prev(event)">&#x2039; Prev</button>
+    <div class="counter"><span id="pos">1</span> / <span id="total">1</span><small id="deckname">All</small></div>
+    <button class="navbtn" onclick="next(event)">Next &#x203A;</button>
+  </div>
+  <div class="util">
+    <button class="navbtn flipbtn" onclick="flip(event)">Flip &#x27F3;</button>
+    <button class="navbtn" onclick="shuffle(event)">Shuffle &#x2928;</button>
+    <button class="navbtn" onclick="coreOnly(event)">Core only &#x2605;</button>
+    <button class="navbtn" onclick="reset(event)">Reset &#x21BA;</button>
+  </div>
+
+  <p class="foot">
+    <span class="kbd">&#x2190;</span>/<span class="kbd">&#x2192;</span> navigate &#x00B7; <span class="kbd">Space</span> flip &#x00B7; <span class="kbd">S</span> shuffle &#x00B7; <span class="kbd">C</span> core-only<br>
+    21 cards &#x00B7; building blocks &#x2192; classic designs &#x2192; AI/agentic systems
+  </p>
+</div>
+
+<script>
+const CARDS = [
+/* ===== TRACK 1: BUILDING BLOCKS ===== */
+{track:"1 \u00B7 Building Blocks",tier:"core",type:"Concept",name:"CAP Theorem & Consistency",
+ prompt:"When would you choose consistency over availability?",
+ clarify:["What's the real question: CP or AP, since partition tolerance isn't optional in a real distributed system?","Does this specific data need strong consistency, or is eventual consistency acceptable per field?"],
+ approach:"During a network partition, you must choose between <strong>Consistency</strong> (every read sees the latest write) and <strong>Availability</strong> (every request gets a response, possibly stale). Most real systems don't pick one globally \u2014 they pick per data type: strong consistency for inventory/payments, eventual consistency for view counts or activity feeds.",
+ sketch:`Strong consistency (CP):        Eventual consistency (AP):
+  Write -> Primary               Write -> Any replica
+           |-- sync replicate               |-- async replicate (lag)
+  Read  -> Primary (guaranteed          Read -> Any replica (may be
+           latest)                              stale until it catches up)`,
+ trade:[["DynamoDB / Cassandra","default AP (eventual), tunable to strong reads per-request at a latency cost"],["RDBMS / ZooKeeper / etcd","default CP \u2014 sacrifice availability during a partition to guarantee correctness"]],
+ probes:["How does eventual consistency show up as a user-visible bug right after a write? (read-your-writes problem)","Give an example of data in your system that must be strongly consistent, and one that's fine eventual."],
+ cx:["also relevant: <b>Sharding</b>, <b>SQL vs NoSQL</b>"]},
+
+{track:"1 \u00B7 Building Blocks",tier:"core",type:"Concept",name:"Load Balancing",
+ prompt:"How do you distribute traffic across a fleet without a single point of failure?",
+ clarify:["Layer 4 (transport, fast, connection-level) or Layer 7 (application, can route by path/header)?","Do connections need to be sticky (WebSockets, sessions) or is the backend stateless?"],
+ approach:"Spreads incoming requests across multiple servers so no single instance is overloaded, and enables horizontal scaling by adding more instances behind the same address. L7 load balancers can route by URL path or header (e.g. to different microservices); L4 is faster but blind to application content.",
+ sketch:`Client -> DNS/GSLB (region) -> L7 Load Balancer -> [ Server 1 ]
+                                    |-- health checks    [ Server 2 ]
+                                    |-- round robin /     [ Server 3 ]
+                                        least-conns /
+                                        consistent hash`,
+ trade:[["Round robin","simplest, ignores server load"],["Least connections","better under uneven request cost"],["Consistent hashing","needed for sticky routing to caches/shards, minimizes reshuffling when servers change"]],
+ probes:["How would you load balance long-lived WebSocket connections?","What happens to in-flight requests when a backend fails a health check mid-request?"],
+ cx:["also relevant: <b>Rate Limiting</b>, <b>Failure Modes</b>"]},
+
+{track:"1 \u00B7 Building Blocks",tier:"core",type:"Concept",name:"Caching Strategies",
+ prompt:"How do you keep a cache fast without going stale or falling over under load?",
+ clarify:["Is staleness acceptable for this data, and for how long (TTL)?","Read-heavy or write-heavy? That decides cache-aside vs write-through."],
+ approach:"Caching puts hot data closer to compute to cut latency and load on the source of truth. <strong>Cache-aside</strong> (lazy load on miss) is the default; <strong>write-through</strong> keeps cache and DB in lockstep at write time for stronger consistency at higher write latency; <strong>write-back</strong> writes to cache first and flushes to DB async, fastest but riskiest on crash.",
+ sketch:`Cache-aside (read path):
+  Client -> Cache (hit) -> return
+                 (miss) -> DB -> populate cache -> return
+
+Cache stampede fix:
+  hot key expires -> many requests miss at once
+  -> first request takes a lock/re-fetches, others wait or serve stale`,
+ trade:[["Cache-aside","simple, resilient to cache failures (falls back to DB)"],["Write-through","stronger consistency, slower writes"],["Eviction: LRU vs LFU","LRU for recency-biased access, LFU when some keys are perpetually hot"]],
+ probes:["How do you prevent a cache stampede when a hot key's TTL expires?","How do you keep the cache from serving stale data after a DB update?"],
+ cx:["also relevant: <b>Load Balancing</b>, <b>Sharding</b>"]},
+
+{track:"1 \u00B7 Building Blocks",tier:"core",type:"Concept",name:"Database Sharding & Replication",
+ prompt:"How do you scale a database past a single machine's limits?",
+ clarify:["What's the access pattern \u2014 do queries usually touch one entity, or do they need cross-entity joins/aggregation?","Is the read load or the write load the actual bottleneck?"],
+ approach:"<strong>Sharding</strong> splits data horizontally across nodes by a key (hash or range) so writes scale beyond one machine. <strong>Replication</strong> copies data across nodes for read scaling and fault tolerance. The shard key choice matters most \u2014 a poor key (e.g. sequential IDs, one dominant tenant) creates a hot shard that defeats the whole point.",
+ sketch:`hash(shard_key) -> consistent hash ring -> Shard A (primary + 2 replicas)
+                                            -> Shard B (primary + 2 replicas)
+                                            -> Shard C (primary + 2 replicas)
+cross-shard query -> scatter-gather across shards -> merge results (expensive)`,
+ trade:[["Hash-based sharding","even distribution, but range queries become scatter-gather"],["Range-based sharding","efficient range scans, but risks hot shards on sequential keys"],["Replication lag","async replicas can serve stale reads \u2014 fine for most reads, wrong for read-after-write flows"]],
+ probes:["What shard key would you pick for a multi-tenant SaaS product, and why?","How do you handle a query that needs data living on two different shards?"],
+ cx:["also relevant: <b>CAP Theorem</b>, <b>SQL vs NoSQL</b>"]},
+
+{track:"1 \u00B7 Building Blocks",tier:"core",type:"Concept",name:"SQL vs NoSQL",
+ prompt:"How do you choose the right data store for a given access pattern?",
+ clarify:["Do you need multi-row transactions or joins across entities?","Is the access pattern known and key-based (get by ID) or ad hoc/analytical?"],
+ approach:"Relational stores (Aurora/Postgres) give strong consistency, joins, and transactions but require sharding work to reach very high throughput. NoSQL (DynamoDB, Cassandra) scales horizontally by design but usually forces single-table, access-pattern-first modeling \u2014 you denormalize and duplicate data to avoid joins entirely.",
+ sketch:`Relational: normalize first, query flexibly, join at read time
+DynamoDB single-table: design the table around your KNOWN
+  access patterns first \u2014 e.g. PK=USER#id, SK=ORDER#id
+  to fetch a user's orders in one query with no join`,
+ trade:[["SQL","best when queries are unpredictable or need transactions/joins"],["NoSQL","best at massive scale with known, key-based access patterns"],["Cost of getting it wrong","NoSQL modeled like SQL performs badly; SQL forced to NoSQL-scale needs heavy sharding"]],
+ probes:["Why would DynamoDB be a poor fit for ad hoc analytics/reporting queries?","How would you model a one-to-many relationship in a single-table DynamoDB design?"],
+ cx:["also relevant: <b>Sharding</b>, <b>CAP Theorem</b>"]},
+
+{track:"1 \u00B7 Building Blocks",tier:"core",type:"Concept",name:"Message Queues & Event-Driven Design",
+ prompt:"How do you decouple producers from consumers and absorb traffic spikes?",
+ clarify:["Do multiple independent consumers need the same event (pub/sub), or one consumer per message (queue)?","Does a consumer ever need to replay history, or just process what's new?"],
+ approach:"Queues (SQS) buffer work between a producer and a single logical consumer group, absorbing spikes and enabling retries. Pub/sub (SNS) fans one event out to many independent subscribers. Log-based streams (Kafka/Kinesis) additionally let consumers replay history and process at their own pace.",
+ sketch:`Producer -> SNS (fan-out) -> SQS Queue A -> Consumer A (email)
+                             -> SQS Queue B -> Consumer B (analytics)
+                             -> SQS Queue C -> Consumer C (audit log)
+failed message -> retry with backoff -> N failures -> Dead Letter Queue`,
+ trade:[["SQS","point-to-point buffering, at-least-once delivery, simple"],["SNS","fan-out to many subscribers, often paired with SQS per subscriber"],["Kafka/Kinesis","replayable log, ordered per-partition, needed when consumers process at different speeds"]],
+ probes:["How do you guarantee a message isn't processed twice given at-least-once delivery?","How do you handle a poison message that fails every retry?"],
+ cx:["also relevant: <b>Idempotency</b>, <b>Failure Modes</b>"]},
+
+{track:"1 \u00B7 Building Blocks",tier:"common",type:"Concept",name:"Rate Limiting",
+ prompt:"How do you cap request rate per client across a fleet of stateless servers?",
+ clarify:["Per-user, per-API-key, or per-IP? That determines the counting key.","Is a burst allowance acceptable, or must the rate be perfectly smooth?"],
+ approach:"Enforced centrally (e.g. in Redis) so the limit holds across every stateless API server, not per-instance. <strong>Token bucket</strong> allows bursts up to the bucket size while refilling at a steady average rate. <strong>Sliding window</strong> is smoother and more accurate but costs more memory than a simple fixed window.",
+ sketch:`Request -> API Gateway -> Redis: INCR counter for key, per window
+                              |-- under limit --> allow, forward to service
+                              |-- over limit  --> 429 + Retry-After header`,
+ trade:[["Fixed window","simplest, but allows ~2x burst right at window boundaries"],["Token bucket","balances burst tolerance with average-rate enforcement"],["Sliding window log","most accurate, highest memory cost"]],
+ probes:["How would you rate limit per-user across many stateless API servers?","What should the client see when rate-limited, and how should it react?"],
+ cx:["also relevant: <b>Load Balancing</b>, <b>LLM Gateway</b>"]},
+
+{track:"1 \u00B7 Building Blocks",tier:"common",type:"Concept",name:"Idempotency",
+ prompt:"How do you make an operation safe to retry without double-processing it?",
+ clarify:["Is the retry coming from the client (network timeout, unsure if the first request landed) or from at-least-once queue delivery?","Does the caller supply a stable key, or does each retry generate a new one (which breaks idempotency)?"],
+ approach:"An idempotent operation produces the same result no matter how many times it's applied \u2014 essential when retries or at-least-once delivery could otherwise duplicate an effect (e.g. double-charging a payment). The client supplies a stable idempotency key per logical operation; the server stores key\u2192result and returns the cached result on a repeat instead of re-executing.",
+ sketch:`Client -> POST /charge (Idempotency-Key: abc123)
+  Server: key seen before? 
+    yes -> return the stored result, do NOT re-charge
+    no  -> execute, store (key -> result), return result`,
+ trade:[["Dedup store TTL","must outlive the client's realistic retry window"],["Key must be caller-supplied","a key regenerated on every retry defeats the whole mechanism"]],
+ probes:["Where would you store idempotency keys, and for how long?","How does idempotency interact with a transaction that spans two separate services?"],
+ cx:["also relevant: <b>Message Queues</b>, <b>Failure Modes</b>"]},
+
+{track:"1 \u00B7 Building Blocks",tier:"common",type:"Concept",name:"Failure Modes & Redundancy",
+ prompt:"How do you stop one failing dependency from cascading into a full outage?",
+ clarify:["Is the dependency failing outright, or responding slowly? (Slow is often worse than down.)","What's the acceptable degraded behavior if this dependency is unavailable \u2014 fail closed or fail open?"],
+ approach:"Real systems must expect partial failure. <strong>Circuit breakers</strong> stop calling a failing dependency after an error threshold, failing fast instead of piling up timeouts, then periodically test recovery. <strong>Retries with exponential backoff + jitter</strong> avoid hammering a recovering dependency in a synchronized wave. <strong>Bulkheads</strong> isolate resource pools per dependency so one slow one can't exhaust all threads/connections.",
+ sketch:`Call dependency -> success -> closed (normal)
+              -> N failures -> OPEN (fail fast, no calls)
+                          -> after cooldown -> HALF-OPEN (test one call)
+                                          -> success -> closed
+                                          -> failure -> open again`,
+ trade:[["No backoff+jitter","synchronized retries can turn a blip into a full retry storm"],["Circuit breaker","trades some availability (failing fast) for system-wide stability"],["Bulkheads","prevent one slow dependency from starving unrelated request paths"]],
+ probes:["What happens if a downstream dependency gets slow rather than fully down?","How do you avoid a retry storm right after a dependency recovers?"],
+ cx:["also relevant: <b>Load Balancing</b>, <b>Message Queues</b>"]},
+
+/* ===== TRACK 2: CLASSIC DESIGN PROBLEMS ===== */
+{track:"2 \u00B7 Classic Designs",tier:"core",type:"Design Problem",name:"URL Shortener",
+ prompt:"Design a service like bit.ly.",
+ clarify:["Scale: reads vs writes ratio (usually read-heavy, ~100:1)?","Custom aliases needed? Expiring links? Analytics on click-through?"],
+ approach:"Write path generates a short code (base62 counter or hash+collision-check) and stores short\u2192long mapping. Read path is the hot path \u2014 dominated by redirects, so it must be cache-first with the DB as fallback, and use a 301/302 redirect so the client's browser can cache it too.",
+ sketch:`Write: Client -> API -> KeyGen (base62 counter, sharded ranges)
+                          -> DB write (short_code -> long_url)
+                          -> warm cache
+
+Read:  Client -> Cache (hit)  -> 302 redirect
+              -> Cache (miss) -> DB -> populate cache -> 302 redirect`,
+ trade:[["Base62 counter","short codes, needs a coordinated/sharded counter to avoid collisions at scale"],["Hash + collision check","stateless generation, must handle rare collisions"],["301 vs 302 redirect","301 is cacheable by browsers (less traffic to you) but breaks click analytics"]],
+ probes:["How do you generate unique short codes across multiple servers without collisions?","How would you add click analytics without slowing down the redirect path?"],
+ cx:["reuses: <b>Caching</b>, <b>Sharding</b>"]},
+
+{track:"2 \u00B7 Classic Designs",tier:"core",type:"Design Problem",name:"Distributed Rate Limiter",
+ prompt:"Design a rate limiter as a shared service for many downstream APIs.",
+ clarify:["Per-user, per-API-key, or per-IP limiting?","Does it need to support different limits per tier (free vs paid)?"],
+ approach:"Centralize the counter in Redis so the limit is enforced consistently regardless of which stateless API server handles the request. Token bucket per key is the common choice \u2014 refill rate encodes the sustained limit, bucket size encodes burst tolerance.",
+ sketch:`Client -> API Gateway -> Rate Limiter Service
+                                    |-- Redis: token bucket per key
+                                    |     (atomic check-and-decrement,
+                                    |      e.g. via Lua script)
+                                    |-- allow --> forward to service
+                                    |-- deny  --> 429 + Retry-After`,
+ trade:[["Centralized Redis","single source of truth, but a hot key can bottleneck one Redis shard"],["Local + centralized hybrid","approximate local limiting reduces Redis load at the cost of slight over-admission"]],
+ probes:["How do you make the check-and-decrement atomic to avoid a race under concurrent requests?","How would you scale this if Redis itself becomes the bottleneck?"],
+ cx:["reuses: <b>Rate Limiting</b>, <b>Caching</b>"]},
+
+{track:"2 \u00B7 Classic Designs",tier:"common",type:"Design Problem",name:"Distributed Cache (like Redis)",
+ prompt:"Design a distributed, replicated key-value cache.",
+ clarify:["Read-heavy or write-heavy workload?","Is losing recently written data on a crash acceptable, or does it need durability?"],
+ approach:"Use consistent hashing to map keys to shards so adding/removing nodes only reshuffles a small fraction of keys. Each shard has a primary plus replicas for read scaling and failover. Per-shard eviction (LRU/LFU) bounds memory.",
+ sketch:`hash(key) -> position on consistent hash ring -> nearest Shard
+Shard = Primary (writes) + N Replicas (reads, failover)
+Eviction: per-shard LRU/LFU when memory limit is hit`,
+ trade:[["Consistent hashing","minimizes key movement when scaling the cluster up/down"],["Async replication","fast writes, but a primary failure can lose the most recent writes"],["LRU vs LFU eviction","LRU for recency bias, LFU when some keys are perpetually hot regardless of recency"]],
+ probes:["How do you rebalance the ring when adding a new shard with minimal disruption?","What happens to in-flight writes if a shard's primary crashes right before replication completes?"],
+ cx:["reuses: <b>Caching</b>, <b>Sharding</b>"]},
+
+{track:"2 \u00B7 Classic Designs",tier:"common",type:"Design Problem",name:"Notification System",
+ prompt:"Design a system that sends push/email/SMS notifications at scale.",
+ clarify:["Which channels (push, email, SMS) and does the user choose preferences per channel/event type?","Does delivery need to be guaranteed, or is best-effort acceptable?"],
+ approach:"Decouple the event source from delivery with a queue, so a spike in events doesn't overwhelm downstream providers. A preference service filters by user opt-in/channel before fan-out. Each channel's delivery is isolated so a slow email provider can't block push notifications.",
+ sketch:`Event Source -> SQS Queue -> Notification Service
+                                        |-- check Preference Service
+                                        |-- fan out per channel:
+                                              Push provider (APNs/FCM)
+                                              Email provider (SES)
+                                              SMS provider (SNS)
+                                        |-- failure -> retry -> DLQ`,
+ trade:[["Single queue per event","simple, but one slow channel can add backpressure"],["Queue per channel","isolates failure/latency per channel, more moving parts"],["At-least-once delivery","requires idempotency to avoid duplicate notifications on retry"]],
+ probes:["How do you avoid sending a duplicate notification if the delivery confirmation is lost?","How would you prioritize a time-sensitive notification (e.g. security alert) over a marketing one?"],
+ cx:["reuses: <b>Message Queues</b>, <b>Idempotency</b>"]},
+
+{track:"2 \u00B7 Classic Designs",tier:"situational",type:"Design Problem",name:"News Feed / Timeline",
+ prompt:"Design a social media feed (like Twitter's home timeline).",
+ clarify:["Typical follower count per user, and does anyone have a huge follower count (celebrity problem)?","Does the feed need to be strictly chronological, or ranked?"],
+ approach:"Fan-out-on-write pushes a new post into every follower's precomputed feed cache immediately \u2014 fast reads, but breaks down for accounts with millions of followers. Fan-out-on-read instead assembles the feed at request time by pulling from people you follow \u2014 slower reads, but avoids the celebrity write-amplification problem. Most real systems use a hybrid.",
+ sketch:`Normal user posts -> fan-out-on-write -> push into each
+                                             follower's feed cache
+
+Celebrity posts    -> fan-out-on-read -> followers pull &
+                                          merge at request time
+
+Read: Client -> Feed Service -> merge precomputed + pulled -> rank -> return`,
+ trade:[["Fan-out-on-write","fast reads, but a celebrity post fans out to millions of writes"],["Fan-out-on-read","avoids write amplification, but every read does more work"],["Hybrid (most real systems)","fan-out-on-write for normal accounts, fan-out-on-read for high-follower accounts"]],
+ probes:["How do you handle a celebrity account with 50M followers without a single post causing a write storm?","How would you rank the feed rather than showing it strictly chronologically?"],
+ cx:["reuses: <b>Caching</b>, <b>Message Queues</b>"]},
+
+{track:"2 \u00B7 Classic Designs",tier:"situational",type:"Design Problem",name:"Chat / Messaging System",
+ prompt:"Design a real-time one-to-one and group chat system.",
+ clarify:["Delivery guarantees: at-least-once with dedup, or exactly-once?","Do offline users need push notifications, and is message history required?"],
+ approach:"Persistent WebSocket connections (sticky to a specific gateway node) carry real-time delivery; a presence service tracks online/offline status. Messages are stored partitioned by conversation ID for efficient history retrieval, and offline recipients get a push notification instead of a live delivery.",
+ sketch:`Client <--WebSocket--> Chat Gateway (sticky connection)
+                                  |-- Chat Service -> Message Store
+                                  |                    (partitioned by
+                                  |                     conversation_id)
+                                  |-- Presence Service (Redis: online set)
+                                  |-- offline recipient -> push notification`,
+ trade:[["WebSocket + sticky LB","real-time, but requires connection-aware load balancing"],["Partition by conversation_id","keeps a conversation's history on one shard for fast reads"],["At-least-once + client-side dedup","simpler server logic, requires a message ID the client can dedupe on"]],
+ probes:["How do you handle a user with an active connection to gateway A receiving a message routed through gateway B?","How would you support message history pagination efficiently at scale?"],
+ cx:["reuses: <b>Load Balancing</b>, <b>Sharding</b>"]},
+
+{track:"2 \u00B7 Classic Designs",tier:"situational",type:"Design Problem",name:"Web Crawler",
+ prompt:"Design a distributed web crawler.",
+ clarify:["Scale: how many pages, and how fresh must the crawl be?","Politeness constraints \u2014 do you need to respect robots.txt and per-domain rate limits?"],
+ approach:"A frontier queue holds URLs to fetch, prioritized and rate-limited per domain to avoid hammering any single site. Fetcher workers pull URLs, parse pages, extract new links, and feed them back into the frontier \u2014 deduping against already-seen URLs with a space-efficient structure like a Bloom filter.",
+ sketch:`Seed URLs -> Frontier Queue (priority + per-domain politeness)
+                       |
+              Fetcher Workers (parallel, rate-limited per domain)
+                       |-- Dedup check (Bloom filter / URL hash set)
+                       |-- Parser -> extract links -> back to Frontier
+                       |-- Store raw content -> Indexer`,
+ trade:[["Bloom filter for dedup","space-efficient at web scale, small false-positive rate (may skip a rare new URL)"],["Per-domain politeness queueing","prevents overloading any one site, but adds scheduling complexity"],["Priority in the frontier","lets you recrawl high-value pages more often than long-tail ones"]],
+ probes:["How do you avoid crawling the same URL twice at massive scale without an exact-membership structure?","How would you prioritize recrawling frequently-changing pages over static ones?"],
+ cx:["reuses: <b>Message Queues</b>, <b>Sharding</b>"]},
+
+{track:"2 \u00B7 Classic Designs",tier:"situational",type:"Design Problem",name:"Distributed Job Scheduler",
+ prompt:"Design a system that schedules and runs jobs across a worker fleet.",
+ clarify:["One-off jobs, recurring (cron-like) jobs, or both?","Must a job run exactly once, or is at-least-once with idempotent jobs acceptable?"],
+ approach:"Jobs land in a priority queue; a scheduler assigns them to available workers from a pool. A distributed lock (via the DB or a coordination service) prevents two scheduler instances from double-assigning the same job. Workers heartbeat so a crashed worker's job can be reassigned.",
+ sketch:`Client submits job -> Job Queue (priority)
+                                |-- Scheduler -> acquire lock on job
+                                              -> assign to Worker
+                                Worker executes, heartbeats
+                                  |-- success -> mark complete
+                                  |-- crash (missed heartbeat)
+                                        -> release lock -> reassign
+                                  |-- repeated failure -> dead-letter`,
+ trade:[["Distributed lock for assignment","prevents double-execution of the same job by two schedulers"],["Heartbeat-based failure detection","simple, but a slow (not crashed) worker can trigger a false reassignment"],["Exactly-once execution","effectively unachievable end-to-end; design jobs to be idempotent instead"]],
+ probes:["How do you prevent the same job from running twice if two scheduler instances race?","What happens if a worker is just slow, not actually crashed, and its job gets reassigned?"],
+ cx:["reuses: <b>Idempotency</b>, <b>Failure Modes</b>"]},
+
+/* ===== TRACK 3: AI / AGENTIC SYSTEMS ===== */
+{track:"3 \u00B7 AI & Agentic Systems",tier:"core",type:"Design Problem",name:"Document / RAG Ingestion Pipeline",
+ prompt:"Design a pipeline that ingests documents and answers natural-language questions over them.",
+ clarify:["Document volume and update frequency \u2014 one-time bulk load, or continuous ingestion?","Latency requirement for query answers \u2014 real-time chat, or async/batch acceptable?"],
+ approach:"Ingestion is async and event-driven: an uploaded document triggers chunking, then embedding, then storage in a vector index alongside metadata. The query path is synchronous: embed the query, run similarity search, optionally re-rank, assemble context, and let the LLM synthesize a grounded answer.",
+ sketch:`Ingest: Upload -> Object Store (S3) -> event trigger
+                              -> Chunking Service (semantic/fixed-size)
+                              -> Embedding Service (Bedrock/Voyage)
+                              -> Vector DB (OpenSearch/pgvector) + Metadata DB
+
+Query:  User query -> embed query -> vector similarity search
+                    -> re-rank top-N -> assemble context
+                    -> LLM synthesis -> streamed response`,
+ trade:[["Chunk size","small chunks improve retrieval precision, large chunks preserve more context per hit"],["Vector DB choice","managed (OpenSearch) vs Postgres+pgvector \u2014 ops simplicity vs cost/control"],["Sync vs async ingestion","async scales to bulk uploads; the query path stays low-latency regardless"]],
+ probes:["How do you handle a document update \u2014 re-embed the whole document, or just the changed chunks?","How would you evaluate retrieval quality separately from generation quality?"],
+ cx:["reuses: <b>Message Queues</b>, <b>Caching</b>"]},
+
+{track:"3 \u00B7 AI & Agentic Systems",tier:"core",type:"Design Problem",name:"Multi-Agent Orchestrator",
+ prompt:"Design a system that coordinates multiple AI agents on a complex task (Step Functions-style).",
+ clarify:["Do sub-tasks run sequentially, in parallel, or with conditional branching based on intermediate results?","What happens on a step failure \u2014 retry, fall back, or escalate to a human?"],
+ approach:"A durable state machine tracks task progress across steps so a crash mid-task doesn't lose work. A planner agent decomposes the goal into sub-tasks; specialized agents execute them (in parallel where independent); an aggregator combines results. Each step is checkpointed so failures resume from the last good state rather than restarting.",
+ sketch:`Task Request -> Orchestrator (durable state machine)
+                          |-- Planner Agent: decompose into sub-tasks
+                          |-- Tool-use Agents: execute sub-tasks
+                          |     (parallel where independent)
+                          |-- checkpoint state after each step
+                          |-- Aggregator: combine results
+                          |-- on failure: retry step / escalate to human`,
+ trade:[["Durable checkpointing","adds latency/storage cost per step, but makes long tasks resumable after a crash"],["Parallel sub-agent execution","faster overall, but requires the aggregator to handle partial/out-of-order results"],["Human-in-the-loop escalation","protects against silent failure on ambiguous or high-stakes steps"]],
+ probes:["How do you prevent a single failing agent step from corrupting the overall task state?","How would you decide which sub-tasks can run in parallel versus must run sequentially?"],
+ cx:["reuses: <b>Message Queues</b>, <b>Failure Modes</b>, <b>Idempotency</b>"]},
+
+{track:"3 \u00B7 AI & Agentic Systems",tier:"common",type:"Design Problem",name:"LLM Evaluation Service",
+ prompt:"Design a service that automatically evaluates LLM/agent output quality before deploy.",
+ clarify:["Is this gating deploys in CI (must block bad changes), or a monitoring dashboard (observe only)?","What counts as a 'regression' \u2014 any score drop, or a drop below an absolute threshold?"],
+ approach:"On every prompt/model change, run the change against a fixed golden test set. Score outputs with an LLM-as-Judge against a rubric, and separately track regression versus each test case's own baseline score \u2014 catching a case that dropped even if it's still passing an absolute bar. Wire this into CI so it blocks deploy automatically rather than depending on a human remembering to check.",
+ sketch:`CI trigger (prompt/model change) -> Eval Runner
+                                              |-- run golden test set
+                                              |-- LLM-as-Judge scores vs rubric
+                                              |-- compare each case to its
+                                              |     own baseline (regression?)
+                                              |-- any regression -> block deploy
+                                              |-- else -> report + deploy`,
+ trade:[["Absolute threshold only","misses a case that regressed but is still technically 'passing'"],["Per-case baseline comparison","catches silent regressions, needs a maintained baseline per test case"],["LLM-as-Judge","scales better than human review, but the judge itself needs periodic calibration against human ratings"]],
+ probes:["How do you calibrate the automated judge's threshold against real human judgment?","How would you keep the golden test set representative as usage patterns evolve?"],
+ cx:["reuses: <b>Failure Modes</b> (as a deploy gate), <b>Message Queues</b>"]},
+
+{track:"3 \u00B7 AI & Agentic Systems",tier:"common",type:"Design Problem",name:"Rate-Limited Multi-Provider LLM Gateway",
+ prompt:"Design a gateway that routes requests across multiple LLM providers with cost and quota control.",
+ clarify:["Is routing based on cost, latency, capability (which model can do this task), or a mix?","Per-tenant quota, and what happens when a tenant exceeds it \u2014 hard block, or degrade to a cheaper model?"],
+ approach:"A gateway sits between clients and multiple LLM providers, enforcing per-tenant quota before routing, choosing a provider/model based on cost-latency-capability trade-offs, and caching semantically similar repeat queries to cut cost. Usage is metered per request for billing and quota enforcement.",
+ sketch:`Client -> API Gateway -> Auth + Quota Service (per-tenant budget)
+                              -> Semantic Cache (hit? return cached)
+                              -> Router (cost/latency/capability)
+                              -> Provider Adapter: Bedrock / OpenAI / Anthropic
+                              -> Usage Metering -> Billing`,
+ trade:[["Hard quota block","protects cost, but breaks the tenant's app mid-flow"],["Degrade to cheaper model on quota limit","keeps the app working, changes output quality unexpectedly"],["Semantic cache","big cost win on repeat-ish queries, risk of returning a stale or subtly wrong cached answer"]],
+ probes:["How do you decide a query is 'similar enough' to a cached one to reuse the cached response safely?","How would you fail over if a provider (e.g. Bedrock) has an outage mid-request?"],
+ cx:["reuses: <b>Rate Limiting</b>, <b>Caching</b>, <b>Failure Modes</b>"]},
+];
+
+/* ---- app ---- */
+const TRACKS = ["All", ...Array.from(new Set(CARDS.map(c=>c.track)))];
+let filter="All", deck=CARDS.slice(), idx=0;
+const $=id=>document.getElementById(id);
+const TIER_LABEL={core:"Core",common:"Common",sit:"Situational"};
+
+function buildFilters(){
+  const box=$("filters"); box.innerHTML="";
+  TRACKS.forEach(t=>{
+    const b=document.createElement("button");
+    b.className="chip"+(t===filter?" active":"");
+    b.textContent=t;
+    b.onclick=()=>{filter=t;applyFilter();};
+    box.appendChild(b);
+  });
+}
+function applyFilter(){
+  deck = filter==="All" ? CARDS.slice() : CARDS.filter(c=>c.track===filter);
+  idx=0; buildFilters(); render();
+}
+function esc(s){return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+function render(){
+  const c=deck[idx];
+  $("card").classList.remove("flipped");
+  $("f-track").textContent=c.track;
+  $("b-track").textContent=c.track;
+  ["f","b"].forEach(p=>{
+    const el=$(p+"-tier");
+    const tierKey = c.tier==="situational" ? "sit" : c.tier;
+    el.textContent=TIER_LABEL[tierKey]||c.tier;
+    el.className="tier "+tierKey;
+  });
+  $("f-type").textContent=c.type;
+  $("f-name").textContent=c.name;
+  $("f-prompt").textContent=c.prompt;
+  $("b-name").textContent=c.name;
+  $("b-meta").textContent=c.type+" \u00B7 "+c.track;
+  $("b-clarify").innerHTML=(c.clarify||[]).map(x=>`<div class="clarifyitem">${x}</div>`).join("");
+  $("b-approach").innerHTML=c.approach;
+  $("b-sketch").textContent=c.sketch;
+  $("b-tradebox").innerHTML=c.trade.map(([label,text])=>`<div class="traderow"><b>${esc(label)}:</b> ${esc(text)}</div>`).join("");
+  $("b-probes").innerHTML=c.probes.map(p=>`<div class="probeitem">${esc(p)}</div>`).join("");
+  $("b-cx").innerHTML=(c.cx||[]).map(x=>"<span>"+x+"</span>").join("");
+  $("pos").textContent=idx+1;
+  $("total").textContent=deck.length;
+  $("deckname").textContent=filter;
+  const bs=document.querySelector(".backscroll"); if(bs) bs.scrollTop=0;
+}
+function flip(e){if(e)e.stopPropagation();$("card").classList.toggle("flipped");}
+function next(e){if(e)e.stopPropagation();idx=(idx+1)%deck.length;render();}
+function prev(e){if(e)e.stopPropagation();idx=(idx-1+deck.length)%deck.length;render();}
+function shuffle(e){if(e)e.stopPropagation();for(let i=deck.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[deck[i],deck[j]]=[deck[j],deck[i]];}idx=0;render();}
+function coreOnly(e){if(e)e.stopPropagation();filter="All";deck=CARDS.filter(c=>c.tier==="core");idx=0;buildFilters();$("deckname").textContent="Core";render();}
+function reset(e){if(e)e.stopPropagation();filter="All";applyFilter();}
+document.addEventListener("keydown",ev=>{
+  if(ev.key==="ArrowRight")next();
+  else if(ev.key==="ArrowLeft")prev();
+  else if(ev.key===" "){ev.preventDefault();flip();}
+  else if(ev.key.toLowerCase()==="s")shuffle();
+  else if(ev.key.toLowerCase()==="c")coreOnly();
+});
+buildFilters();render();
+</script>
+</body>
+</html>
